@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    angular.module('ariaNg').directive('ngSetting', ['$timeout', '$translate', 'ariaNgConstants', function ($timeout, $translate, ariaNgConstants) {
+    angular.module('ariaNg').directive('ngSetting', ['$timeout', '$translate', 'ariaNgConstants', 'aria2SettingService', function ($timeout, $translate, ariaNgConstants, aria2SettingService) {
         return {
             restrict: 'E',
             templateUrl: 'views/setting.html',
@@ -21,6 +21,14 @@
                 };
 
                 angular.extend(options, attrs);
+
+                var loadHistory = function () {
+                    if (!scope.option || !scope.option.showHistory) {
+                        return;
+                    }
+
+                    scope.history = aria2SettingService.getSettingHistory(scope.option.key);
+                };
 
                 var destroyTooltip = function () {
                     angular.element(element).tooltip('destroy');
@@ -238,6 +246,7 @@
                 }
 
                 scope.$watch('option', function () {
+                    loadHistory();
                     element.find('[data-toggle="popover"]').popover();
                 });
 
@@ -257,6 +266,8 @@
 
                     scope.placeholder = getHumanReadableValue(displayValue);
                 });
+
+                loadHistory();
             }
         };
     }]);

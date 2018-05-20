@@ -52,6 +52,7 @@
     "angular-promise-buttons": "^0.1.23",
     "angular-dragula": "^1.2.8",
     "angular-clipboard": "^1.6.2",
+    "angular-input-dropdown": "mayswind/angular-input-dropdown#e13100b407c409d34906e02c03952ab1ab96612a",
     "ngSweetAlert": "^1.1.2"
   },
   "resolutions": {
