@@ -1,12 +1,13 @@
 (function () {
     'use strict';
 
-    angular.module('ariaNg').factory('ariaNgLogService', ['$log', 'moment', 'ariaNgConstants', 'ariaNgSettingService', function ($log, moment, ariaNgConstants, ariaNgSettingService) {
+    angular.module('ariaNg').factory('ariaNgLogService', ['$log', 'ariaNgConstants', function ($log, ariaNgConstants) {
+        var enableDebugLog = false;
         var cachedDebugLogs = [];
 
         var createNewCacheLogItem = function (msg, level, obj) {
             return {
-                time: moment(),
+                time: new Date(),
                 level: level,
                 content: msg,
                 attachment: obj
@@ -14,7 +15,7 @@
         };
 
         var pushLogToCache = function (msg, level, obj) {
-            if (!ariaNgSettingService.isEnableDebugMode()) {
+            if (!enableDebugLog) {
                 return;
             }
 
@@ -26,8 +27,11 @@
         };
 
         return {
+            setEnableDebugLog: function (value) {
+                enableDebugLog = value;
+            },
             debug: function (msg, obj) {
-                if (ariaNgSettingService.isEnableDebugMode()) {
+                if (enableDebugLog) {
                     if (obj) {
                         $log.debug('[AriaNg Debug]' + msg, obj);
                     } else {
@@ -65,7 +69,7 @@
                 pushLogToCache(msg, 'ERROR', obj);
             },
             getDebugLogs: function () {
-                if (ariaNgSettingService.isEnableDebugMode()) {
+                if (enableDebugLog) {
                     return cachedDebugLogs;
                 } else {
                     return [];

@@ -1,6 +1,6 @@
-[default]
+[global]
 Operation Succeeded=操作成功
-Connection Succeeded=連線成功
+{{name}} is connected={{name}} 已連線
 Error=錯誤
 OK=確定
 Confirm=確認
@@ -9,7 +9,7 @@ True=是
 False=否
 Connecting=連線中
 Connected=已連線
-Not Connected=未連線
+Disconnected=未連線
 Global=全域
 New=新增
 Start=開始工作
@@ -26,6 +26,9 @@ Search=搜尋
 Default=預設
 Expand=展開
 Collapse=摺疊
+Open=打開
+Save=儲存
+Import=匯入
 Remove Task=刪除工作
 Clear Stopped Tasks=清除已結束工作
 Click to view task detail=點選檢視工作詳情
@@ -143,6 +146,8 @@ Activate=啟用
 Reset Settings=重設設定
 Confirm Reset=確認重設
 Are you sure you want to reset all settings?=您是否要重設所有設定?
+Clear Settings History=清除設定歷史
+Are you sure you want to clear all settings history?=您是否要清除所有設定的歷史紀錄?
 Delete RPC Setting=刪除 RPC 設定
 Add New RPC Setting=加入新 RPC 設定
 Are you sure you want to remove rpc setting "{{rpcName}}"?=您是否要刪除 RPC 設定 "{{rpcName}}"?
@@ -152,6 +157,17 @@ Action After Creating New Tasks=建立新工作後執行操作
 Removing Old Task After Restarting=重試工作後刪除原工作
 Navigate to Task List Page=轉到工作清單頁面
 Navigate to Task Detail Page=轉到工作詳情頁面
+RPC List Display Order=RPC 清單顯示順序
+Recently Used=最近使用
+RPC Alias=RPC 別名
+Import / Export AriaNg Settings=匯入 / 匯出 AriaNg 設定
+Import Settings=匯入設定
+Export Settings=匯出設定
+AriaNg settings data=AriaNg 設定資料
+Confirm Import=確認匯入
+Are you sure you want to import all settings?=您是否要匯入所有設定?
+Invalid settings data format!=無效的設定資料格式!
+Data has been copied to clipboard.=資料已經複製到剪貼簿中.
 Supported Placeholder=支援的預留位置
 AriaNg Title=AriaNg 標題
 Downloading Count=正在下載數量
@@ -210,6 +226,7 @@ URL is not base64 encoded!=指定 URL 不是 Base64 編碼後的字串!
 Tap to configure and get started with AriaNg.=您還沒有進行過設定, 點選這裡進行設定.
 Cannot initialize WebSocket!=無法初始化 WebSocket!
 Access Denied!=拒絕訪問!
+You cannot use AriaNg because this browser does not support data storage.=您無法使用 AriaNg, 您的瀏覽器不支援資料儲存.
 
 [error]
 unknown=不詳錯誤.
@@ -264,7 +281,7 @@ debug.latest-logs=最近 {{count}} 條記錄
 [rpc.error]
 unauthorized=認證失敗!
 
-[options]
+[option]
 true=是
 false=否
 default=預設
@@ -289,6 +306,8 @@ feedback=反饋
 geom=幾何
 inorder=順序
 random=隨機
+
+[options]
 dir.name=下載路徑
 dir.description=
 log.name=記錄檔案
@@ -378,7 +397,7 @@ enable-http-keep-alive.description=啟用 HTTP/1.1 持久連線.
 enable-http-pipelining.name=啟用 HTTP 管線化
 enable-http-pipelining.description=啟用 HTTP/1.1 管線化.
 header.name=自訂要求標頭
-header.description=增加 HTTP 要求標頭內容.
+header.description=增加 HTTP 要求標頭內容. 每行放置一項, 每項包含 "標頭名: 標頭值".
 save-cookies.name=Cookies 儲存路徑
 save-cookies.description=以 Mozilla/Firefox(1.x/2.x)/Netscape 格式將 Cookies 儲存到檔案中. 如果檔案已經存在, 將被覆蓋. 會話過期的 Cookies 也將會儲存, 其過期時間將會設定為 0.
 use-head.name=啟用 HEAD 方法
@@ -440,9 +459,9 @@ bt-save-metadata.description=儲存種子檔案為 ".torrent" 檔案. 此選項�
 bt-seed-unverified.name=不檢查已經下載的檔案
 bt-seed-unverified.description=不檢查之前下載檔案中每個分段的雜湊值.
 bt-stop-timeout.name=無速度時自動停止時間
-bt-stop-timeout.description=當 BT 工作F下載速度持續為 0, 達到此選項設定的時間後停止下載. 如果設定為 0, 此功能將停用.
+bt-stop-timeout.description=當 BT 工作下載速度持續為 0, 達到此選項設定的時間後停止下載. 如果設定為 0, 此功能將停用.
 bt-tracker.name=BT 伺服器位址
-bt-tracker.description=逗號分隔的 BT 伺服器位址. 如果伺服器位址在 --bt-exclude-tracker 選項中, 其將不會生效.
+bt-tracker.description=逗號分隔的 BT 伺服器位址. 這些位址不受 --bt-exclude-tracker 選項的影響, 因為這些位址在 --bt-exclude-tracker 選項排除掉其他位址之後才會加入.
 bt-tracker-connect-timeout.name=BT 伺服器連線超時時間
 bt-tracker-connect-timeout.description=設定 BT 伺服器的連線超時時間 (秒). 當連線建立後, 此選項不再生效, 請使用 --bt-tracker-timeout 選項.
 bt-tracker-interval.name=BT 伺服器連線間隔時間
@@ -478,7 +497,7 @@ peer-agent.description=指定 BT 擴充握手期間用於節點客戶端版本�
 seed-ratio.name=最小分享率
 seed-ratio.description=指定分享率. 當分享率達到此選項設定的值時會完成做種. 強烈建議您將此選項設定為大於等於 1.0. 如果您想不限制分享比率, 可以設定為 0.0. 如果同時設定了 --seed-time 選項, 當任意一個條件滿足時將停止做種.
 seed-time.name=最小做種時間
-seed-time.description=此選項設定為 0 時, 將在 BT 工作下載完成後不進行做種.
+seed-time.description=以 (小數形式的) 分鐘指定做種時間. 此選項設置爲 0 時, 將在 BT 任務下載完成後不進行做種.
 follow-metalink.name=下載 Metalink 中的檔案
 follow-metalink.description=如果設定為"是"或"僅記憶體", 當副檔名為 .meta4 或 .metalink 或內容類型為 application/metalink4+xml 或 application/metalink+xml 的檔案下載完成時, aria2 將依 Metalink 檔案讀取並下載該檔案中提到的檔案. 如果設定為"僅記憶體", 該 Metalink 檔案將不會寫入到磁碟中, 而僅會儲存在記憶體中. 如果設定為"否", 則 .metalink 檔案會下載到磁碟中, 但不會依 Metalink 檔案讀取並且其中的檔案不會進行下載.
 metalink-base-uri.name=基礎 URI
