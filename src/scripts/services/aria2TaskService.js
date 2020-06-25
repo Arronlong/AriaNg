@@ -20,7 +20,14 @@
                 return path;
             }
 
-            return path.substring(index + 1);
+            var fileNameAndQueryString = path.substring(index + 1);
+            var queryStringStartPos = fileNameAndQueryString.indexOf('?');
+
+            if (queryStringStartPos <= 0) {
+                return fileNameAndQueryString;
+            }
+
+            return fileNameAndQueryString.substring(0, queryStringStartPos);
         };
 
         var calculateDownloadRemainTime = function (remainBytes, downloadSpeed) {
@@ -294,6 +301,12 @@
             task.remainTime = calculateDownloadRemainTime(task.remainLength, task.downloadSpeed);
             task.seeder = (task.seeder === true || task.seeder === 'true');
 
+            if (task.verifiedLength && task.totalLength) {
+                task.verifiedPercent = parseInt(task.verifiedLength / task.totalLength * 100);
+            } else {
+                task.verifiedPercent = undefined;
+            }
+
             var taskNameResult = getTaskName(task);
             task.taskName = taskNameResult.name;
             task.hasTaskName = taskNameResult.success;
@@ -370,8 +383,8 @@
 
             for (var i = 0; i < peers.length; i++) {
                 var peer = peers[i];
-                var upstreamToSpeed = peer.uploadSpeed;
-                var downstreamFromSpeed = peer.downloadSpeed;
+                var upstreamToSpeed = parseInt(peer.uploadSpeed);
+                var downstreamFromSpeed = parseInt(peer.downloadSpeed);
                 var completedPieces = getPieceStatus(peer.bitfield, task.numPieces);
                 var completedPieceCount = ariaNgCommonService.countArray(completedPieces, true);
 
@@ -614,7 +627,7 @@
                     callback: callback
                 });
             },
-            restartTask: function (gid, callback, silent) {
+            retryTask: function (gid, callback, silent) {
                 var deferred = $q.defer();
 
                 var methods = [
@@ -629,12 +642,12 @@
                     silent: !!silent,
                     callback: function (response) {
                         if (!callback) {
-                            ariaNgLogService.warn('[aria2TaskService.restartTask] callback is null');
+                            ariaNgLogService.warn('[aria2TaskService.retryTask] callback is null');
                             return;
                         }
 
                         if (!response.success) {
-                            ariaNgLogService.warn('[aria2TaskService.restartTask] response is not success', response);
+                            ariaNgLogService.warn('[aria2TaskService.retryTask] response is not success', response);
                             deferred.reject(response);
                             callback(response);
                             return;
@@ -650,23 +663,23 @@
 
                         if (!task || !options || !task.files || task.files.length !== 1 || task.bittorrent) {
                             if (!task) {
-                                ariaNgLogService.warn('[aria2TaskService.restartTask] task is null');
+                                ariaNgLogService.warn('[aria2TaskService.retryTask] task is null');
                             }
 
                             if (!options) {
-                                ariaNgLogService.warn('[aria2TaskService.restartTask] options is null');
+                                ariaNgLogService.warn('[aria2TaskService.retryTask] options is null');
                             }
 
                             if (!task.files) {
-                                ariaNgLogService.warn('[aria2TaskService.restartTask] task file is null');
+                                ariaNgLogService.warn('[aria2TaskService.retryTask] task file is null');
                             }
 
                             if (task.files.length !== 1) {
-                                ariaNgLogService.warn('[aria2TaskService.restartTask] task file length is not equal 1');
+                                ariaNgLogService.warn('[aria2TaskService.retryTask] task file length is not equal 1');
                             }
 
                             if (task.bittorrent) {
-                                ariaNgLogService.warn('[aria2TaskService.restartTask] task is bittorrent');
+                                ariaNgLogService.warn('[aria2TaskService.retryTask] task is bittorrent');
                             }
 
                             deferred.reject(gid);
@@ -693,19 +706,19 @@
                             silent: !!silent,
                             callback: function (response) {
                                 if (!response.success) {
-                                    ariaNgLogService.warn('[aria2TaskService.restartTask] addUri response is not success', response);
+                                    ariaNgLogService.warn('[aria2TaskService.retryTask] addUri response is not success', response);
                                     deferred.reject(response);
                                     callback(response);
                                     return;
                                 }
 
-                                if (ariaNgSettingService.getRemoveOldTaskAfterRestarting()) {
+                                if (ariaNgSettingService.getRemoveOldTaskAfterRetrying()) {
                                     aria2RpcService.removeDownloadResult({
                                         gid: gid,
                                         silent: true,
                                         callback: function (response) {
                                             if (!response.success) {
-                                                ariaNgLogService.warn('[aria2TaskService.restartTask] removeDownloadResult response is not success', response);
+                                                ariaNgLogService.warn('[aria2TaskService.retryTask] removeDownloadResult response is not success', response);
                                             }
                                         }
                                     });
@@ -717,6 +730,67 @@
                         });
                     }
                 });
+
+                return deferred.promise;
+            },
+            retryTasks: function (tasks, callback, silent) {
+                if (!callback) {
+                    ariaNgLogService.warn('[aria2TaskService.retryTasks] callback is null');
+                    return;
+                }
+
+                var retryTaskFunc = this.retryTask;
+
+                var deferred = $q.defer();
+                var lastPromise = null;
+
+                var successCount = 0;
+                var failedCount = 0;
+
+                var doRetryFunc = function (task, index) {
+                    ariaNgLogService.debug('[aria2TaskService.retryTasks] task#' + index + ', gid=' + task.gid + ' start retrying', task);
+
+                    return retryTaskFunc(task.gid, function (response) {
+                        ariaNgLogService.debug('[aria2TaskService.retryTasks] task#' + index + ', gid=' + task.gid + ', result=' + response.success, task);
+
+                        if (response.success) {
+                            successCount++;
+                        } else {
+                            failedCount++;
+                        }
+
+                        if ((successCount + failedCount) === tasks.length) {
+                            var finalResponse = {
+                                successCount: successCount,
+                                failedCount: failedCount,
+                                hasSuccess: successCount > 0,
+                                hasError: failedCount > 0
+                            };
+
+                            deferred.resolve(finalResponse);
+                            callback(finalResponse);
+                        }
+                    }, silent);
+                };
+
+                for (var i = 0; i < tasks.length; i++) {
+                    var task = tasks[i];
+                    var currentPromise = null;
+
+                    if (!lastPromise) {
+                        currentPromise = doRetryFunc(task, i);
+                    } else {
+                        currentPromise = (function (task, index) {
+                            return lastPromise.then(function onSuccess() {
+                                return doRetryFunc(task, index);
+                            }).catch(function onError() {
+                                return doRetryFunc(task, index);
+                            });
+                        })(task, i);
+                    }
+
+                    lastPromise = currentPromise;
+                }
 
                 return deferred.promise;
             },
@@ -744,8 +818,8 @@
                         silent: !!silent,
                         callback: function (response) {
                             ariaNgCommonService.pushArrayTo(results, response.results);
-                            hasSuccess = hasSuccess | response.hasSuccess;
-                            hasError = hasError | response.hasError;
+                            hasSuccess = hasSuccess || response.hasSuccess;
+                            hasError = hasError || response.hasError;
                         }
                     }));
                 }
@@ -756,13 +830,13 @@
                         silent: !!silent,
                         callback: function (response) {
                             ariaNgCommonService.pushArrayTo(results, response.results);
-                            hasSuccess = hasSuccess | response.hasSuccess;
-                            hasError = hasError | response.hasError;
+                            hasSuccess = hasSuccess || response.hasSuccess;
+                            hasError = hasError || response.hasError;
                         }
                     }));
                 }
 
-                return $q.all(promises).then(function () {
+                return $q.all(promises).then(function onSuccess() {
                     if (callback) {
                         callback({
                             hasSuccess: !!hasSuccess,
@@ -787,6 +861,28 @@
                     callback: callback
                 });
             },
+            onConnectionSuccess: function (callback) {
+                if (!callback) {
+                    ariaNgLogService.warn('[aria2TaskService.onConnectionSuccess] callback is null');
+                    return;
+                }
+
+                aria2RpcService.onConnectionSuccess({
+                    callback: callback
+                });
+
+            },
+            onConnectionFailed: function (callback) {
+                if (!callback) {
+                    ariaNgLogService.warn('[aria2TaskService.onConnectionFailed] callback is null');
+                    return;
+                }
+
+                aria2RpcService.onConnectionFailed({
+                    callback: callback
+                });
+
+            },
             onFirstSuccess: function (callback) {
                 if (!callback) {
                     ariaNgLogService.warn('[aria2TaskService.onFirstSuccess] callback is null');
@@ -797,23 +893,23 @@
                     callback: callback
                 });
             },
-            onConnectSuccess: function (callback) {
+            onOperationSuccess: function (callback) {
                 if (!callback) {
-                    ariaNgLogService.warn('[aria2TaskService.onConnectSuccess] callback is null');
+                    ariaNgLogService.warn('[aria2TaskService.onOperationSuccess] callback is null');
                     return;
                 }
 
-                aria2RpcService.onConnectSuccess({
+                aria2RpcService.onOperationSuccess({
                     callback: callback
                 });
             },
-            onConnectError: function (callback) {
+            onOperationError: function (callback) {
                 if (!callback) {
-                    ariaNgLogService.warn('[aria2TaskService.onConnectError] callback is null');
+                    ariaNgLogService.warn('[aria2TaskService.onOperationError] callback is null');
                     return;
                 }
 
-                aria2RpcService.onConnectError({
+                aria2RpcService.onOperationError({
                     callback: callback
                 });
 

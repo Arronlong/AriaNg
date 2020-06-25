@@ -2,7 +2,7 @@
     'use strict';
 
     angular.module('ariaNg').controller('TaskDetailController', ['$rootScope', '$scope', '$routeParams', '$interval', 'clipboard', 'aria2RpcErrors', 'ariaNgFileTypes', 'ariaNgCommonService', 'ariaNgSettingService', 'ariaNgMonitorService', 'aria2TaskService', 'aria2SettingService', function ($rootScope, $scope, $routeParams, $interval, clipboard, aria2RpcErrors, ariaNgFileTypes, ariaNgCommonService, ariaNgSettingService, ariaNgMonitorService, aria2TaskService, aria2SettingService) {
-        var tabOrders = ['overview', 'blocks', 'filelist', 'btpeers'];
+        var tabOrders = ['overview', 'pieces', 'filelist', 'btpeers'];
         var downloadTaskRefreshPromise = null;
         var pauseDownloadTaskRefresh = false;
         var currentRowTriggeredMenu = null;
@@ -28,6 +28,11 @@
 
             if (!$scope.task || $scope.task.status !== task.status) {
                 $scope.context.availableOptions = getAvailableOptions(task.status, !!task.bittorrent);
+            }
+
+            if ($scope.task) {
+                delete $scope.task.verifiedLength;
+                delete $scope.task.verifyIntegrityPending;
             }
 
             $scope.task = ariaNgCommonService.copyObjectTo(task, $scope.task);
@@ -74,6 +79,7 @@
                     }
 
                     var task = response.data;
+
                     processTask(task);
 
                     if (requireBtPeers(task)) {
@@ -194,6 +200,7 @@
             currentTab: 'overview',
             isEnableSpeedChart: ariaNgSettingService.getDownloadTaskRefreshInterval() > 0,
             showChooseFilesToolbar: false,
+            fileExtensions: [],
             collapsedDirs: {},
             btPeers: [],
             healthPercent: 0,
@@ -273,6 +280,10 @@
         };
 
         $scope.isAnyFileSelected = function () {
+            if (!$scope.task || !$scope.task.files) {
+                return false;
+            }
+
             for (var i = 0; i < $scope.task.files.length; i++) {
                 var file = $scope.task.files[i];
 
@@ -284,9 +295,33 @@
             return false;
         };
 
+        $scope.isAllFileSelected = function () {
+            if (!$scope.task || !$scope.task.files) {
+                return false;
+            }
+
+            for (var i = 0; i < $scope.task.files.length; i++) {
+                var file = $scope.task.files[i];
+
+                if (!file.isDir && !file.selected) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
         $scope.selectFiles = function (type) {
             if (!$scope.task || !$scope.task.files) {
                 return;
+            }
+
+            if (type === 'auto') {
+                if ($scope.isAllFileSelected()) {
+                    type = 'none';
+                } else {
+                    type = 'all';
+                }
             }
 
             for (var i = 0; i < $scope.task.files.length; i++) {
@@ -314,7 +349,7 @@
             }
 
             var files = $scope.task.files;
-            var extensions = ariaNgFileTypes[type];
+            var extensions = ariaNgFileTypes[type].extensions;
             var fileIndexes = [];
             var isAllSelected = true;
 
@@ -367,6 +402,143 @@
             }
         };
 
+        $scope.showCustomChooseFileModal = function () {
+            if (!$scope.task || !$scope.task.files) {
+                return;
+            }
+
+            var files = $scope.task.files;
+            var extensionsMap = {};
+
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+
+                if (file.isDir) {
+                    continue;
+                }
+
+                var extension = ariaNgCommonService.getFileExtension(file.fileName);
+
+                if (extension) {
+                    extension = extension.toLowerCase();
+                }
+
+                var extensionInfo = extensionsMap[extension];
+
+                if (!extensionInfo) {
+                    var extensionName = extension;
+
+                    if (extensionName.length > 0 && extensionName.charAt(0) === '.') {
+                        extensionName = extensionName.substring(1);
+                    }
+
+                    extensionInfo = {
+                        extension: extensionName,
+                        classified: false,
+                        selected: false,
+                        selectedCount: 0,
+                        unSelectedCount: 0
+                    };
+
+                    extensionsMap[extension] = extensionInfo;
+                }
+
+                if (file.selected) {
+                    extensionInfo.selected = true;
+                    extensionInfo.selectedCount++;
+                } else {
+                    extensionInfo.unSelectedCount++;
+                }
+            }
+
+            var allClassifiedExtensions = {};
+
+            for (var type in ariaNgFileTypes) {
+                if (!ariaNgFileTypes.hasOwnProperty(type)) {
+                    continue;
+                }
+
+                var extensionTypeName = ariaNgFileTypes[type].name;
+                var allExtensions = ariaNgFileTypes[type].extensions;
+                var extensions = [];
+
+                for (var i = 0; i < allExtensions.length; i++) {
+                    var extension = allExtensions[i];
+                    var extensionInfo = extensionsMap[extension];
+
+                    if (extensionInfo) {
+                        extensionInfo.classified = true;
+                        extensions.push(extensionInfo);
+                    }
+                }
+
+                if (extensions.length > 0) {
+                    allClassifiedExtensions[type] = {
+                        name: extensionTypeName,
+                        extensions: extensions
+                    };
+                }
+            }
+
+            var unClassifiedExtensions = [];
+
+            for (var extension in extensionsMap) {
+                if (!extensionsMap.hasOwnProperty(extension)) {
+                    continue;
+                }
+
+                var extensionInfo = extensionsMap[extension];
+
+                if (!extensionInfo.classified) {
+                    unClassifiedExtensions.push(extensionInfo);
+                }
+            }
+
+            if (unClassifiedExtensions.length > 0) {
+                allClassifiedExtensions.other = {
+                    name: 'Other',
+                    extensions: unClassifiedExtensions
+                };
+            }
+
+            $scope.context.fileExtensions = allClassifiedExtensions;
+            angular.element('#custom-choose-file-modal').modal();
+        };
+
+        $scope.setSelectedExtension = function (selectedExtension, selected) {
+            if (!$scope.task || !$scope.task.files) {
+                return;
+            }
+
+            var files = $scope.task.files;
+
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+
+                if (file.isDir) {
+                    continue;
+                }
+
+                var extension = ariaNgCommonService.getFileExtension(file.fileName);
+
+                if (extension) {
+                    extension = extension.toLowerCase();
+                }
+
+                if (extension !== '.' + selectedExtension) {
+                    continue;
+                }
+
+                file.selected = selected;
+            }
+
+            updateAllDirNodesSelectedStatus();
+        };
+
+        $('#custom-choose-file-modal').on('hide.bs.modal', function (e) {
+            $scope.context.fileExtensions = null;
+        });
+
         $scope.setSelectedFile = function (updateNodeSelectedStatus) {
             if (updateNodeSelectedStatus) {
                 updateAllDirNodesSelectedStatus();
@@ -377,14 +549,14 @@
             }
         };
 
-        $scope.collapseDir = function (dirNode, newValue) {
+        $scope.collapseDir = function (dirNode, newValue, forceRecurse) {
             var nodePath = dirNode.nodePath;
 
             if (angular.isUndefined(newValue)) {
                 newValue = !$scope.context.collapsedDirs[nodePath];
             }
 
-            if (newValue) {
+            if (newValue || forceRecurse) {
                 for (var i = 0; i < dirNode.subDirs.length; i++) {
                     $scope.collapseDir(dirNode.subDirs[i], newValue);
                 }
@@ -392,6 +564,22 @@
 
             if (nodePath) {
                 $scope.context.collapsedDirs[nodePath] = newValue;
+            }
+        };
+
+        $scope.collapseAllDirs = function (newValue) {
+            if (!$scope.task || !$scope.task.files) {
+                return;
+            }
+
+            for (var i = 0; i < $scope.task.files.length; i++) {
+                var node = $scope.task.files[i];
+
+                if (!node.isDir) {
+                    continue;
+                }
+
+                $scope.collapseDir(node, newValue, true);
             }
         };
 
@@ -460,8 +648,12 @@
                 value += angular.element(element).text().trim();
             });
 
-            var info = name + ': ' + value;
-            clipboard.copyText(info);
+            if (ariaNgSettingService.getIncludePrefixWhenCopyingFromTaskDetails()) {
+                var info = name + ': ' + value;
+                clipboard.copyText(info);
+            } else {
+                clipboard.copyText(value);
+            };
         };
 
         if (ariaNgSettingService.getDownloadTaskRefreshInterval() > 0) {

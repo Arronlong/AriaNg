@@ -7,8 +7,10 @@
         var secret = ariaNgSettingService.getCurrentRpcSecret();
 
         var onFirstSuccessCallbacks = [];
-        var onConnectSuccessCallbacks = [];
-        var onConnectErrorCallbacks = [];
+        var onOperationSuccessCallbacks = [];
+        var onOperationErrorCallbacks = [];
+        var onConnectionSuccessCallbacks = [];
+        var onConnectionFailedCallbacks = [];
         var onDownloadStartCallbacks = [];
         var onDownloadPauseCallbacks = [];
         var onDownloadStopCallbacks = [];
@@ -45,6 +47,8 @@
             var invokeContext = {
                 uniqueId: uniqueId,
                 requestBody: requestBody,
+                connectionSuccessCallback: requestContext.connectionSuccessCallback,
+                connectionFailedCallback: requestContext.connectionFailedCallback,
                 successCallback: requestContext.successCallback,
                 errorCallback: requestContext.errorCallback
             };
@@ -89,8 +93,8 @@
                 contexts[i].callback = function (response) {
                     results.push(response);
 
-                    hasSuccess = hasSuccess | response.success;
-                    hasError = hasError | !response.success;
+                    hasSuccess = hasSuccess || response.success;
+                    hasError = hasError || !response.success;
                 };
 
                 promises.push(methodFunc(contexts[i]));
@@ -132,6 +136,14 @@
                 methodName: (!isSystemMethod ? getAria2MethodFullName(methodName) : methodName)
             };
 
+            context.connectionSuccessCallback = function () {
+                fireCustomEvent(onConnectionSuccessCallbacks);
+            };
+
+            context.connectionFailedCallback = function () {
+                fireCustomEvent(onConnectionFailedCallbacks);
+            };
+
             if (secret && !isSystemMethod) {
                 finalParams.push(aria2RpcConstants.rpcTokenPrefix + secret);
             }
@@ -149,7 +161,7 @@
                         });
                     }
 
-                    fireCustomEvent(onConnectSuccessCallbacks);
+                    fireCustomEvent(onOperationSuccessCallbacks);
 
                     if (!isConnected) {
                         isConnected = true;
@@ -177,7 +189,7 @@
                         });
                     }
 
-                    fireCustomEvent(onConnectErrorCallbacks);
+                    fireCustomEvent(onOperationErrorCallbacks);
                 };
             }
 
@@ -268,7 +280,9 @@
                     'numSeeders',
                     'seeder',
                     'status',
-                    'errorCode'
+                    'errorCode',
+                    'verifiedLength',
+                    'verifyIntegrityPending'
                 ];
             },
             getFullTaskParams: function () {
@@ -276,6 +290,7 @@
 
                 requestParams.push('files');
                 requestParams.push('bittorrent');
+                requestParams.push('infoHash');
 
                 return requestParams;
             },
@@ -310,7 +325,7 @@
                 var content = context.task.content;
                 var options = buildRequestOptions(context.task.options, context);
 
-                return invoke(buildRequestContext('addMetalink', context, content, [], options), !!returnContextOnly);
+                return invoke(buildRequestContext('addMetalink', context, content, options), !!returnContextOnly);
             },
             remove: function (context, returnContextOnly) {
                 return invoke(buildRequestContext('remove', context, context.gid), !!returnContextOnly);
@@ -471,11 +486,17 @@
             onFirstSuccess: function (context) {
                 onFirstSuccessCallbacks.push(context.callback);
             },
-            onConnectSuccess: function (context) {
-                onConnectSuccessCallbacks.push(context.callback);
+            onOperationSuccess: function (context) {
+                onOperationSuccessCallbacks.push(context.callback);
             },
-            onConnectError: function (context) {
-                onConnectErrorCallbacks.push(context.callback);
+            onOperationError: function (context) {
+                onOperationErrorCallbacks.push(context.callback);
+            },
+            onConnectionSuccess: function (context) {
+                onConnectionSuccessCallbacks.push(context.callback);
+            },
+            onConnectionFailed: function (context) {
+                onConnectionFailedCallbacks.push(context.callback);
             },
             onDownloadStart: function (context) {
                 onDownloadStartCallbacks.push(context.callback);
